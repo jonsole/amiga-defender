@@ -14,9 +14,9 @@ OBJ_WorldX:		DC.W	0
 *   OBJ_MoveAll(ObjectList)
 *               D0
 * Function
-*   This function moves all object in list
+*   This function moves all objects in list according to speed and accleration 
 * Registers
-*   D0-D4/A3: corrupted
+*   D0-D5/A3: corrupted
 *****************************************************************************
 			XDEF	OBJ_MoveAll
 
@@ -27,8 +27,28 @@ OBJ_MoveAll:		; Exit if pointer is 0
 .MoveLoop:		; Copy pointer to A3
 			MOVE.L	D0,A3
 
+			; Apply acceleration
+			MOVE.W	(Object.AccelXCount,A3),D0
+			SUB.W	#1,D0
+			BMI	.NoAccelX
+			MOVE.W	D0,(Object.AccelXCount,A3)
+			ADD.W	D0,(Object.SpeedX,A3)
+.NoAccelX:
+
+			MOVE.W	(Object.AccelYCount,A3),D0
+			SUB.W	#1,D0
+			BMI	.NoAccelY
+			MOVE.W	D0,(Object.AccelYCount,A3)
+			ADD.W	D0,(Object.SpeedY,A3)
+.NoAccelY:
+
 			; Get object position, speed
 			MOVEM.W	(Object.PosX,A3),D0-D3
+
+			; Simulate gravity
+			MOVE.W	(Object.Weight,A3),D4
+			ADD.W	D4,D3
+			MOVE.W	D3,(Object.SpeedY,A3)
 
 			; Add SpeedX to PosX
 .MoveX:			ADD.W	D2,D0	
@@ -39,11 +59,6 @@ OBJ_MoveAll:		; Exit if pointer is 0
 			BCS	.BounceY
 			CMP.W	#190<<OBJ_POSY_SHIFT,D1
 			BCC	.BounceY
-
-			; Simulate gravity
-			MOVE.W	(Object.Weight,A3),D4
-			ADD.W	D4,D3
-			MOVE.W	D3,(Object.SpeedY,A3)
 
 .MoveDone:		; Store object's new position
 			MOVEM.W	D0-D1,(Object.PosX,A3)
@@ -58,6 +73,10 @@ OBJ_MoveAll:		; Exit if pointer is 0
 .BounceY:		NEG.W	D3
 			MOVE.W	D3,(Object.SpeedY,A3)
 			BRA	.MoveDone
+
+
+
+
 
 
 

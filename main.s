@@ -8,17 +8,13 @@
 
 			SECTION	DATA,DATA
 
-Alien1Methods:		DC.L	Alien1Move
-			DC.L	Alien1Hit
-
-Alien2Methods:		DC.L	Alien2Move
-			DC.L	Alien2Hit
-
 			XDEF	Alien1
 Alien1:			DC.L	Alien2		; Next
-			DC.L	Alien1Methods
+			DC.L	Alien1Hit
+			DC.L	Alien1Move
 			DC.W	16,10,-200,50<<OBJ_POSY_SHIFT	; SizeX, SizeY, PosX, PosY
 			DC.W	0, -12		; SpeedX, SpeedY
+			DC.W	0, 0, 0, 0	; AccelX, AccelY
 			DC.W	1		; Weight
 			DC.L	Alien1Sprite, Alien1FlashSprite
 			DC.L	Alien1Data, Alien1FlashData
@@ -26,9 +22,11 @@ Alien1:			DC.L	Alien2		; Next
 
 			XDEF	Alien2
 Alien2:			DC.L	0		; Next
-			DC.L	Alien2Methods
+			DC.L	Alien2Hit
+			DC.L	Alien2Move
 			DC.W	16,10,+200,70<<OBJ_POSY_SHIFT	; SizeX, SizeY, PosX, PosY
 			DC.W	0, -12		; SpeedX, SpeedY
+			DC.W	0, 0, 0, 0 	; AccelX, AccelY
 			DC.W	2		; Weight
 			DC.L	Alien2Sprite, Alien1FlashSprite
 			DC.L	Alien2Data, Alien1FlashData
@@ -37,9 +35,12 @@ Alien2:			DC.L	0		; Next
 			SECTION BSS, BSS
 APP_ClearList1:		DS.W	2000
 APP_ClearList2:		DS.W	2000
+APP_ClearList3:		DS.W	2000
+
 APP_BitplaneMemory	DS.L	1
 APP_CopperList		DS.L	1
-APP_SoftwareInterruptHandler: DS.L	1
+
+APP_SoftwareIntHandler: DS.L	1
 
 			XDEF	APP_ObjectList
 APP_ObjectList:		DC.L	Alien1
@@ -47,6 +48,7 @@ APP_ObjectList:		DC.L	Alien1
 			SECTION BSS_C,BSS_C
 APP_CopperList1:	DS.W	100*16+2
 APP_CopperList2:	DS.W	100*16+2
+APP_CopperList3:	DS.W	100*16+2
 
 			SECTION	CODE,CODE
 
@@ -65,24 +67,23 @@ APP_Main:               ; Set interrupt1 vector
 
 			LEA	APP_VerticalBlankHandler,A0
 			MOVE.L	A0,GFX_VerticalBlankHandler
-			LEA	APP_SoftwareInterruptHandler1,A0
-			MOVE.L	A0,APP_SoftwareInterruptHandler
+			LEA	APP_SoftwareIntHandler1,A0
+			MOVE.L	A0,APP_SoftwareIntHandler
 
 			LEA	APP_CopperList1,A0
 			MOVE.L	#$FFFFFFFE,(A0)
 			LEA	APP_CopperList2,A0
+			MOVE.L	#$FFFFFFFE,(A0)
+			LEA	APP_CopperList3,A0
 			MOVE.L	#$FFFFFFFE,(A0)
 		
 			; Initialise laser
 			BSR	LSR_Init
 
 			; Initialise BLIT clear lists
-			LEA	APP_ClearList1,A0
-			CLR.W	(A0)+
-			CLR.W	(A0)+
-			LEA	APP_ClearList2,A0
-			CLR.W	(A0)+
-			CLR.W	(A0)+
+			CLR.L	APP_ClearList1
+			CLR.L	APP_ClearList2
+			CLR.L	APP_ClearList3
 
 			; Set pointer to object list
 			LEA	Alien1,A0
@@ -122,9 +123,9 @@ APP_Interrupt1Handler:	MOVEM.L	D0-D7/A0-A6,-(SP)
 			MOVE.W	#INTREQ_SOFT,(INTREQ,A6)		
 
 			; Call application software interrupt handler
-			MOVE.L	APP_SoftwareInterruptHandler,A0
+			MOVE.L	APP_SoftwareIntHandler,A0
 			JSR	(A0)
-			MOVE.L	A0,APP_SoftwareInterruptHandler
+			MOVE.L	A0,APP_SoftwareIntHandler
 
 .NotSoft:		MOVEM.L	(SP)+,D0-D7/A0-A6
 			RTE
@@ -153,32 +154,7 @@ APP_VerticalBlankHandler:
 
 
 *****************************************************************************
-APP_SoftwareInterruptHandler1:
-			; Clear objects in bitplane memory 2
-			LEA	APP_ClearList2,A5
-			BSR	APP_ClearObjects
-			
-			; Move objects
-			BSR	APP_MoveObjects
-
-			; Draw objects
-			MOVE.L	APP_ObjectList,A3
-			LEA	APP_CopperList2,A4
-			LEA	APP_ClearList2,A5
-			MOVE.L	#GFX_BitplaneMemory1,D5
-			BSR	APP_DrawObjects
-
-			; Store bitplane memory and copper list for next vertical blank
-			MOVE.L	#GFX_BitplaneMemory2,APP_BitplaneMemory
-			MOVE.L	#APP_CopperList2,APP_CopperList
-
-			; Return with other software interrupt handler
-			LEA	APP_SoftwareInterruptHandler2,A0
-			RTS
-
-
-*****************************************************************************
-APP_SoftwareInterruptHandler2:
+APP_SoftwareIntHandler1:
 			; Clear objects in bitplane memory 1
 			LEA	APP_ClearList1,A5
 			BSR	APP_ClearObjects
@@ -190,7 +166,7 @@ APP_SoftwareInterruptHandler2:
 			MOVE.L	APP_ObjectList,A3
 			LEA	APP_CopperList1,A4
 			LEA	APP_ClearList1,A5
-			MOVE.L	#GFX_BitplaneMemory2,D5
+			MOVE.L	#GFX_BitplaneMemory1,D5
 			BSR	APP_DrawObjects
 
 			; Store bitplane memory and copper list for next vertical blank
@@ -198,8 +174,58 @@ APP_SoftwareInterruptHandler2:
 			MOVE.L	#APP_CopperList1,APP_CopperList
 
 			; Return with other software interrupt handler
-			LEA	APP_SoftwareInterruptHandler1,A0
+			LEA	APP_SoftwareIntHandler2,A0
 			RTS
+
+
+*****************************************************************************
+APP_SoftwareIntHandler2:
+			; Clear objects in bitplane memory 2
+			LEA	APP_ClearList2,A5
+			BSR	APP_ClearObjects
+			
+			; Move objects
+			BSR	APP_MoveObjects
+
+			; Draw objects
+			MOVE.L	APP_ObjectList,A3
+			LEA	APP_CopperList2,A4
+			LEA	APP_ClearList2,A5
+			MOVE.L	#GFX_BitplaneMemory2,D5
+			BSR	APP_DrawObjects
+
+			; Store bitplane memory and copper list for next vertical blank
+			MOVE.L	#GFX_BitplaneMemory2,APP_BitplaneMemory
+			MOVE.L	#APP_CopperList2,APP_CopperList
+
+			; Return with other software interrupt handler
+			LEA	APP_SoftwareIntHandler3,A0
+			RTS
+
+*****************************************************************************
+APP_SoftwareIntHandler3:
+			; Clear objects in bitplane memory 3
+			LEA	APP_ClearList3,A5
+			BSR	APP_ClearObjects
+			
+			; Move objects
+			BSR	APP_MoveObjects
+
+			; Draw objects
+			MOVE.L	APP_ObjectList,A3
+			LEA	APP_CopperList3,A4
+			LEA	APP_ClearList3,A5
+			MOVE.L	#GFX_BitplaneMemory3,D5
+			BSR	APP_DrawObjects
+
+			; Store bitplane memory and copper list for next vertical blank
+			MOVE.L	#GFX_BitplaneMemory3,APP_BitplaneMemory
+			MOVE.L	#APP_CopperList3,APP_CopperList
+
+			; Return with other software interrupt handler
+			LEA	APP_SoftwareIntHandler1,A0
+			RTS
+
 
 
 *****************************************************************************
@@ -253,10 +279,9 @@ APP_MoveObjects:	; Calculate bounding box around all lasers
 			; Set objects hit flag (will cause drawing of alternative sprite)
 			BSET.B	#0,(Object.Flags,A3)
 
-			; Push object
-			MOVE.W	(Laser.SpeedX,A0),D0
-			ASR.W	#3,D0
-			ADD.W	D0,(Object.PosX,A3)
+			; Call object hit function
+			MOVE.L	(Object.HitFunction,A3),A1
+			JSR	(A1)
 
 .NoCollision:		; Continue check with next object
 			MOVE.L	(Object.Next,A3),D4
@@ -279,12 +304,48 @@ APP_MoveObjects:	; Calculate bounding box around all lasers
 			RTS
 
 
-Alien1Move:		RTS
+Alien1Move:		MOVE.W	(Object.SpeedX,A3),D0
+			SUB.W	#20,D0
+			ASR.W	#7,D0
+			SUB.W	D0,(Object.AccelX,A3)
 
-Alien1Hit:		RTS
+			;MOVEQ	#10,D1
+			;MOVE.W	(Object.PosY,A3),D0
+			;MOVE.W	(Object.AccelY,A3),D1
+			;ASL.W	#3,D1
+			;ADD.W	D1,D0
+			;SUB.W	#120<<OBJ_POSY_SHIFT,D0
+			;NEG.W	D0
+			;ASR.W	#4,D0
+			;MOVE.W	D0,D1
+.OK:			;MOVE.W	D1,(Object.AccelY,A3)
+			;ADD.W	#2,(Object.SpeedY,A3)
+			RTS
+
+Alien1Hit:		; Push object
+			MOVE.W	(Laser.SpeedX,A0),D0
+			ASR.W	#2,D0
+			ADD.W	D0,(Object.SpeedX,A3)
+			RTS
 
 
-Alien2Move:		RTS
+Alien2Move:		MOVE.W	(Object.PosY,A3),D0
+			MOVE.W	(Object.AccelY,A3),D1
+			ASL.W	#2,D1
+			ADD.W	D1,D0
+			SUB.W	PLY_Player1+Player.PosY,D0
+			NEG.W	D0
+			ASR.W	#7,D0
+			MOVE.W	D0,(Object.AccelY,A3)
+
+			MOVE.W	(Object.PosX,A3),D0
+			SUB.W	PLY_Player1+Player.PosX,D0
+			NEG.W	D0
+			ASR.W	#7,D0
+			MOVE.W	D0,(Object.AccelX,A3)
+
+			ADD.W	#2,(Object.SpeedY,A3)
+			RTS
 
 Alien2Hit:		RTS
 

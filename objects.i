@@ -1,12 +1,17 @@
 			RSRESET
 Object.Next		RS.L	1
-Object.Methods:		RS.L	1
+Object.HitFunction:	RS.L	1
+Object.MoveFunction:	RS.L	1
 Object.SizeX:		RS.W	1
 Object.SizeY:		RS.W	1
 Object.PosX:		RS.W	1
 Object.PosY:		RS.W	1
 Object.SpeedX:		RS.W	1
 Object.SpeedY:		RS.W	1
+Object.AccelX:		RS.W	1
+Object.AccelXCount:	RS.W	1
+Object.AccelY:		RS.W	1
+Object.AccelYCount:	RS.W	1
 Object.Weight:		RS.W	1
 Object.SpriteData:	RS.L	1
 Object.SpriteHitData:	RS.L	1

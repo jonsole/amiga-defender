@@ -141,13 +141,14 @@ GFX_WaitTopOfFrame:	MOVE.L	(VPOSR,A6),D0
 			BNE	GFX_WaitTopOfFrame
 			RTS
 
-
 GFX_SpritePosY		DC.W	0,0,0,0	
 
 			XDEF	GFX_InitSprites
 GFX_InitSprites:	LEA	(GFX_SpritePosY,PC),A0
 			CLR.L	(A0)+
 			CLR.L	(A0)
+			LEA	(GFX_SpriteTable,PC),A5
+			MOVEQ	#$FFFFFFF0,D5
 			RTS
 
 			XDEF	GFX_FinaliseSprites
@@ -157,116 +158,133 @@ GFX_FinaliseSprites:	MOVE.L	#$FFFFFFFE,(A4)
 
 *****************************************************************************
 * Name
+*   GFX_ADD_SPRITE: Add sprite to copper list
+* Synopsis
+*   GFX_ADD_SPRITE(Height, PosX, PosY, SpriteData, PositionTable, CopperList, Table, Mask)
+*                  D0      D1    D2    D3          A1             A4          A5     D5
+* Function
+*   This macro adds a sprite to the copper list
+* Registers
+*   D0-D1/D3-D4/A1/A4: corrupted
+*****************************************************************************
+GFX_ADD_SPRITE: 	MACRO	; \1 - SPRxPT, \2 - SPRxPOS, \3 - COLOR00
+
+			; Calc address of attached sprite
+			MOVE.L	D3,D4
+			ADD.L	#64,D4
+
+			; Calculate PosYStop = PosY+Height
+			ADD.W	D2,D0
+			
+			; D1 = PosX, D2 = PosY, D0 = PosYStop
+			; Calculate SPRxPOS + SPRxCTL in D1 
+			MOVE.L	(0,A5,D1.W),D1		;18
+			OR.L	(4,A5,D2.W),D1		;14+6
+			OR.L	(8,A5,D0.W),D1		;14+6
+
+			; Write CWAITV vstart-1 to copperlist
+			MOVE.L	(12,A5,D2.W),(A4)+	;26
+			
+			; DEBUG
+			MOVE.W	#COLOR00,(A4)+
+			MOVE.W	#\3,(A4)+
+
+			; Advance PosYStop to next line
+			SUB.W	D5,D0
+			MOVE.W	D0,-(A1)	
+
+			; Write CMOVE.W SPR0PTL,SPR1PTL
+			MOVE.W	#\2+2,(A4)+
+			MOVE.W	D3,(A4)+
+			MOVE.W	#\2+2+4,(A4)+
+			MOVE.W	D4,(A4)+
+
+			; Write CMOVE.W SPR0PTH,SPR1PTH
+			SWAP	D3		;4
+			SWAP	D4		;4
+			MOVE.W	#\2,(A4)+
+			MOVE.W	D3,(A4)+
+			MOVE.W	#\2+4,(A4)+
+			MOVE.W	D4,(A4)+
+
+			; Write CMOVE.W SPR0POS,SPR1PO
+			MOVE.W	#\1,(A4)+
+			MOVE.W	D1,(A4)+
+			MOVE.W	#\1+8,(A4)+
+			MOVE.W	D1,(A4)+
+			
+			; Write CMOVE.W SPR0CTL,SPR1CTL
+			SWAP	D1
+			MOVE.W	#\1+2,(A4)+
+			MOVE.W	D1,(A4)+
+			MOVE.W	#\1+10,(A4)+
+			MOVE.W	D1,(A4)+
+
+			; DEBUG
+			MOVE.W	#COLOR00,(A4)+
+			MOVE.W	#$0000,(A4)+
+
+			; Return with C clear
+			RTS
+			ENDM
+
+
+*****************************************************************************
+* Name
 *   GFX_QueueSprite: Queue sprite
 * Synopsis
-*   CopperList = GFX_Blit16x(Custom, Height, PosX, PosY, SpriteData, CopperList)
-*   A4                       A6      D0      D1    D2    A1          A4
+*   CopperList = GFX_Blit16x(Custom, Height, PosX, PosY, SpriteData, CopperList, Table, Mask)
+*   A4                       A6      D0      D1    D2    D3          A4          A5     D5
 * Function
 *   This function queues a sprite to be displayed
 * Registers
-*   D0-D3/A0: corrupted
+*   D0-D4/A0-A1/A4: corrupted
 *****************************************************************************
-GFX_QUEUE_SPR_SETUP:	MACRO
-
-			; Update postion table
-			ADDI.W	#1,D0
-			ADD.W	D2,D0		; Calculate PosYLast
-			MOVE.W	D0,-(A0)
-
-			; Convert positions into sprite positions
-			ADD.W	#$80-16,D1	; Adjust PosX for display start to make hstart
-			ADD.W	#$2B,D2		; Adjust PosY for display start to make vstart-1
-			ADD.W	#$2B,D0		; Adjust PosYLast for display start to make vstop 
-
-			; Write CWAITV vstart-1 to copperlist
-			MOVE.B	D2,(A4)+
-			MOVE.B 	#$01,(A4)+
-			MOVE.W	#$FF00,(A4)+
-
-			; Sprite starts one line later
-			ADD.W	#1,D2	; Increment vstart
-
-			; Calculate sprite position and control words
-			CLR.B	D3
-			LSL.W	#8,D2	; d2=vstart[7:0],00000000
-			ADDX.B	D3,D3	; d3=000000000000000,vstart[8]			
-			LSL.W	#8,D0	; d0=vstop[7:0],00000000
-			ADDX.B	D3,D3   ; d3=00000000000000,vstart[8],vstop[8]
-			LSR.W	#1,D1	; d1=00000000,hstart[8:1]
-			ADDX.B	D3,D3   ; d3=0000000000000,vstart[8],vstop[8],hstart[0]
-			MOVE.B	D1,D2	; d2=vstart[7:0],hstart[8:1]
-			MOVE.B	D3,D0	; d0=vstop[7:0],00000,vstart[8],vstop[8],hstart[0]
-			BSET	#7,D0	; Set attach bit
-			
-			ENDM
-
-GFX_QUEUE_SPR_COPPER: 	MACRO
-
-			; Write CMOVE.W SPRxPTL
-			MOVE.L	A1,D1
-			MOVE.W	#\2+2,(A4)+
-			MOVE.W	D1,(A4)+
-			MOVE.W	#\2,(A4)+
-			SWAP	D1
-			MOVE.W	D1,(A4)+
-
-			; Write CMOVE.W	SPRxPTH
-			ADD.W	#64,A1			
-			MOVE.L	A1,D1
-			MOVE.W	#\2+2+4,(A4)+
-			MOVE.W	D1,(A4)+
-			MOVE.W	#\2+4,(A4)+
-			SWAP	D1
-			MOVE.W	D1,(A4)+
-
-			; Write CMOVE.W SPRxPOS to copperlist
-			MOVE.W	#\1,(A4)+	; V7-V0 H8-H1
-			MOVE.W	D2,(A4)+
-			MOVE.W	#\1+8,(A4)+	; V7-V0 H8-H1
-			MOVE.W	D2,(A4)+
-
-			; Write CMOVE.W SPRxCTL to coppperlist
-			MOVE.W	#\1+2,(A4)+
-			MOVE.W	D0,(A4)+
-			MOVE.W	#\1+2+8,(A4)+
-			MOVE.W	D0,(A4)+
-
-			ENDM
-
-
-
 			XDEF	GFX_QueueSprite
-GFX_QueueSprite:	LEA	(GFX_SpritePosY,PC),A0
-			CMP.W	(A0)+,D2
-			BHI	.UseSprite0
-			CMP.W	(A0)+,D2
-			BHI	.UseSprite1
-			CMP.W	(A0)+,D2
-			BHI	.UseSprite2
-			CMP.W	(A0)+,D2
-			BHI	.UseSprite3
-			MOVEQ	#0,D0
+GFX_QueueSprite:	LEA	(GFX_SpritePosY,PC),A1	;8
+			CMP.W	(A1)+,D2		;4+4
+			BLO	.NotSprite1
+			GFX_ADD_SPRITE SPR0POS,SPR0PT,$000F
+
+.NotSprite1:		CMP.W	(A1)+,D2		;4+4
+			BLO	.NotSprite2
+			GFX_ADD_SPRITE SPR2POS,SPR2PT,$00FF
+
+.NotSprite2:		CMP.W	(A1)+,D2		;4+4
+			BLO	.NotSprite3
+			GFX_ADD_SPRITE SPR4POS,SPR4PT,$0F00
+			
+.NotSprite3:		CMP.W	(A1)+,D2		;4+4
+			BLO	.NotSprite4
+			GFX_ADD_SPRITE SPR6POS,SPR6PT,$0F0F
+
+.NotSprite4:		; Return with C set
 			RTS
 
-.UseSprite0:		GFX_QUEUE_SPR_SETUP
-			GFX_QUEUE_SPR_COPPER SPR0POS,SPR0PT
-			MOVEQ	#1,D0
-			RTS
+GFX_SpriteTable:	REPT	336
 
-.UseSprite1:		GFX_QUEUE_SPR_SETUP
-			GFX_QUEUE_SPR_COPPER SPR2POS,SPR2PT
-			MOVEQ	#1,D0
-			RTS
+.X:			SET 	REPTN+$70
+.YS:  			SET 	REPTN+$2C
+.YE:  			SET 	REPTN+$2C
+.YW:  			SET 	REPTN+$2B
 
-.UseSprite2:		GFX_QUEUE_SPR_SETUP
-			GFX_QUEUE_SPR_COPPER SPR4POS,SPR4PT
-			MOVEQ	#1,D0
-			RTS
+			; X-Pos (SPRxCTL, SPRxPOS)
+			DC.B	$00, $80 | (.X & $01) 
+    			DC.B  	$00, (.X >> 1)
 
-.UseSprite3:		GFX_QUEUE_SPR_SETUP
-			GFX_QUEUE_SPR_COPPER SPR6POS,SPR6PT
-			MOVEQ	#1,D0
-			RTS
+			; Y-start (SPRxCTL, SPRxPOS)
+			DC.B	$00, $80 | ((.YS >> 6) & $04)
+    			DC.B	(.YS & $FF), $00	; SPRxPOS
+
+			; Y-end (SPRxCTL, SPRxPOS)
+			DC.B	(.YE & $FF), $80 | ((.YE >> 7) & $02)
+    			DC.B	$00, $00	
+
+			; CWait
+			DC.B	(.YW & $FF), $1F, $FF, $FE
+ 			ENDR
+
+
 
 *****************************************************************************
 * Name
@@ -310,64 +328,66 @@ GFX_FinaliseBlit16x:	CLR.W	(A5)+
 
 
 
+GFX_BlitTable:		REPT	336
+.Y:			SET	REPTN
+.X:			SET 	REPTN
+.HEIGHT:		SET	REPTN
+			DC.L	(.Y * GFX_BITPLANE_BYTES_PER_STRIDE)	; Y offset
+			DC.W	((.X >> 4) * 2)				; X offset
+			DC.W	BLTCON0_USEA | BLTCON0_USEB | BLTCON0_USEC | BLTCON0_USED | $00CA | ((.X & $0F) << 12)  ; blitcon0
+			DC.W	((.X & $0F) << 12) ; blitcon1
+			DC.W	(.HEIGHT << 6) | $0002  ; BLTSIZE x 16
+			DC.W	0 ; BLTSIZE x 32
+			DC.W	0 ; spare
+			ENDR
+
 *****************************************************************************
 * Name
 *   GFX_Blit: Blit
 * Synopsis
-*   Dest,ClearList = GFX_Blit16x(Custom, BlitSize, PosX, PosY, Bitplane BlitData, BlitMask, ClearList)
-*   A0   A5                      A6      D0        D1    D2    A0       A1        A2        A5
+*   Dest,ClearList = GFX_Blit16x(Custom, Height, PosX, PosY, Bitplane BlitData)
+*   A0   A5                      A6      D0      D1    D2    A2       D3
 * Function
 *   This function performs a blit.
 * Registers
 *   A0/A3/D1-D3: corrupted
 *****************************************************************************
-			XDEF	GFX_Blit
-GFX_Blit:	        ; Convert Y position into offset in D2
-			IF GFX_BITPLANE_BYTES_PER_STRIDE=256
-			EXT.L	D2
-			LSL.L   #8,D2
-			ELSE
-			MULU.W	#GFX_BITPLANE_BYTES_PER_STRIDE,D2
-			ENDC
+; Don't change A4-A6/D5
 
-			; Shift lower 4 bits of X position into bits 15:12 of D1
-		        ROR.W	#4,D1          
-                        MOVE.W  D1,D3
-        		AND.W	#$F000,D1
-			
-			; Mask out bits 15:12 to give word offset for X position in bits 11:0 of D4
-	        	AND.W   #$0FFF,D3
+			XDEF	GFX_Blit16x
+GFX_Blit16x:	        LEA	(GFX_BlitTable,PC),A1
 
-			; Set BLTCPTH in A0
-			; Calculate destination address by adding Y offset and X offset to base address               
-                        ADD.W   D3,A0	; Add X offset...
-                        ADD.W   D3,A0	; ...twice as it is word offset not byte offset
-                        ADD.L   D2,A0	; Add Y offset
+			MOVE.L	A2,A0
 
-			; Set BLTDPTH in A3
-			MOVE.L 	A0,A3
+			; Convert X & Y positions into offsets and add to bitplane address
+			ADD.L	(0,A1,D2.W),A0	; 6+14
+			ADD.W	(4,A1,D1.W),A0	; 8+10
+			; A0 = BLTCPT & BLTDPT
 
-			; Set BLTCON0 and BLTCON1 in D1.L, start with shift in bits 15:12 of D1
-			MOVE.W	D1,D2
-			OR.W	#BLTCON0_USEA|BLTCON0_USEB|BLTCON0_USEC|BLTCON0_USED|$00CA,D1
-			SWAP 	D1
-			MOVE.W 	D2,D1
+			; Set BLTCON0 and BLTCON1 in D1.L
+			MOVE.L	(6,A1,D1.W),D1
 
-			; Save  BLTSIZE and BLTDPTH for clearing screen later
-			MOVE.W	D0,(A5)+
-			MOVE.L	A3,(A5)+
+			; Get BLTSIZE in D0
+			MOVE.W	(10,A1,D0.W),D0
 
 			; Check if blitter is free
+			MOVE.W  #$0FF0,(COLOR00,A6)
 			MOVE.W	#DMACON_SET|DMACON_BLTPRI,(DMACON,A6)
 .WaitBlit:		BTST.B  #6,(DMACONR,A6)
 			BNE	.WaitBlit
+			MOVE.W  #$0000,(COLOR00,A6)
+
+			MOVE.L 	D3,D4
+			ADD.L	#128,D4
 
 			; Program blitter
 			MOVE.L	D1,(BLTCON0,A6)
-			MOVEM.L A0-A3,(BLTCPTH,A6) ;A0->BLTCPT,A1->BLTBPT,A2->BLTAPT,A3->BLTDPT
-			MOVE.W	D0,(BLTSIZE,A6)
+			MOVEM.L A0/D3/D4,(BLTCPTH,A6) ;A0->BLTCPT,D3->BLTBPT,D4->BLTAPT
+			MOVE.L	A0,(BLTDPTH,A6)
 			MOVE.W	#DMACON_BLTPRI,(DMACON,A6)
-                        RTS
+			MOVE.W	#$5555,(A0)
+			MOVE.W	D0,(BLTSIZE,A6)
+			RTS
 
 *****************************************************************************
 * Name
@@ -509,13 +529,9 @@ GFX_CopperBitplanes:	CMOVE.L	BPL1PT,$0000
 			CMOVE.L	SPR5PT,0
 			CMOVE.L	SPR6PT,0
 			CMOVE.L	SPR7PT,0
-
-			CWAITV	40
-			CMOVE.W	COLOR00,$0111
-
 			CMOVE.W DMACON,DMACON_SET|DMACON_SPREN
 
-			CWAITV	42
+			CWAITV	40
 
 			CMOVE.W	COLOR16,$0111
 			CMOVE.W	COLOR17,$0fff
@@ -538,36 +554,6 @@ GFX_CopperBitplanes:	CMOVE.L	BPL1PT,$0000
 			CMOVE.W	BPLCON1,$0000
 			CMOVE.W	BPL5DAT,$FFFF
 			CMOVE.W	BPL6DAT,$0000
-
-			CWAIT 42,223,$FF,$FE
-			
-			CMOVE.W	COLOR00,$0500
-			CMOVE.W	COLOR00,$0600
-			CMOVE.W	COLOR00,$0700
-			CMOVE.W	COLOR00,$0800
-			CMOVE.W	COLOR00,$0900
-			CMOVE.W	COLOR00,$0A00
-			CMOVE.W	COLOR00,$0B00
-			CMOVE.W	COLOR00,$0C00
-			CMOVE.W	COLOR00,$0D00
-			CMOVE.W	COLOR00,$0E00
-			CMOVE.W	COLOR00,$0F00
-			CMOVE.W	COLOR00,$0010
-			CMOVE.W	COLOR00,$0020
-			CMOVE.W	COLOR00,$0030
-			CMOVE.W	COLOR00,$0040
-			CMOVE.W	COLOR00,$0050
-			;CMOVE.W	COLOR00,$0060
-			;CMOVE.W	COLOR00,$0070
-			;CMOVE.W	COLOR00,$0090
-			;CMOVE.W	COLOR00,$00A0
-			;CMOVE.W	COLOR00,$00B0
-			;CMOVE.W	COLOR00,$00C0
-			;CMOVE.W	COLOR00,$00D0
-			;CMOVE.W	COLOR00,$00E0
-			;CMOVE.W	COLOR00,$00F0
-			CMOVE.W	COLOR00,$0000
-
-			
+			CMOVE.W	COLOR00,$0888			
 			; Jump to copperlist 2
 GFX_CopperJump:		CMOVE.W	COPJMP2,$0000

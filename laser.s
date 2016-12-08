@@ -139,15 +139,15 @@ LSR_DrawAll:		; Initialise blitter
 			BCC	.Next
 			
 			; Convert world coordinates into screen coordinates
-			LSR.W	#LSR_POSX_SHIFT,D1
-			LSR.W	#LSR_POSY_SHIFT,D2
+			LSR.W	#OBJ_POSX_SHIFT,D1
+			LSR.W	#OBJ_POSY_SHIFT,D2
 
 			; Blit object
 			MOVE.W	#(4<<6)|2,D0
 			MOVE.L	D5,A0
 			MOVE.L	(Laser.BlitData,A3),A1
 			LEA	(128,A1),A2
-			BSR 	GFX_Blit
+			;BSR 	GFX_Blit
 			MOVE.L	D7,A3
 
 			; Get address of next object

@@ -13,6 +13,3 @@ Player.Direction:	RS.B	1
 Player.LaserSize:	RS.B	1
 Player.LaserAutoFire:	RS.B	1
 
-
-PLY_POSX_SHIFT		EQU	4
-PLY_POSY_SHIFT		EQU	7

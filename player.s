@@ -1,6 +1,7 @@
 			INCLUDE "graphics.i"
 			INCLUDE "player.i"
 			INCLUDE "laser.i"
+			INCLUDE "objects.i"
 
 			SECTION	DATA,DATA
 PLY_AccelXTable:	DC.B	-5,-8,-10,-15,-20,-10,0,10,20,15,10,8,5
@@ -8,7 +9,7 @@ PLY_AccelXTable:	DC.B	-5,-8,-10,-15,-20,-10,0,10,20,15,10,8,5
 			CNOP	0,4
 			XDEF	PLY_Player1
 PLY_Player1:		DC.L	0
-			DC.W	0,100<<PLY_POSY_SHIFT
+			DC.W	-100 << OBJ_POSX_SHIFT, 100 << OBJ_POSY_SHIFT
 			DC.W	0,0
 			DC.W	10
 			DC.W	0,0
@@ -34,13 +35,13 @@ PLY_FireJoystick2:	BTST.B	#7,$BFE001
 
 			; Get player y position, adjust for laser
 			MOVE.W	(Player.PosY,A3),D1
-			ADD.W	#(8<<PLY_POSY_SHIFT),D1
+			ADD.W	#8 << OBJ_POSY_SHIFT,D1
 
 			; Set laser speed, negate if moving left
 			TST.B	(Player.Direction,A3)
 			BNE	.FireRight
 
-.FireLeft:		SUB.W	#((17-8)<<PLY_POSX_SHIFT),D0
+.FireLeft:		SUB.W	#9 << OBJ_POSX_SHIFT,D0
 			MOVE.W	#-LSR_SPEED,D3
 
 			; Add player speed to laser speed to get final laser speed
@@ -56,7 +57,7 @@ PLY_FireJoystick2:	BTST.B	#7,$BFE001
 			DBRA	D4,.FireLeftLoop
 			RTS
 
-.FireRight:		ADD.W	#((26-8)<<PLY_POSX_SHIFT),D0
+.FireRight:		ADD.W	#18 << OBJ_POSX_SHIFT,D0
 			MOVE.W	#LSR_SPEED,D3
 
 			; Add player speed to laser speed to get final laser speed
@@ -125,12 +126,12 @@ PLY_MoveJoystick2:	MOVE.W	$DFF00C,D0
 
 .CheckUpDown:		BTST	#0,D0
 			BEQ	.NotUp
-			MOVE.W	#3<<PLY_POSY_SHIFT,D5
+			MOVE.W	#3 << OBJ_POSY_SHIFT,D5
 			RTS
 
 .NotUp:			BTST	#8,D0
 			BEQ	.NotDown
-			MOVE.W	#-3<<PLY_POSY_SHIFT,D5
+			MOVE.W	#-3 << OBJ_POSY_SHIFT,D5
 
 .NotDown:		RTS
 
@@ -203,19 +204,19 @@ PLY_MoveAll:		LEA	PLY_Player1,A3
 			ADD.W	D5,D3
 
 			; Check if hit top
-			CMP.W	#18<<PLY_POSY_SHIFT,D3
+			CMP.W	#18 << OBJ_POSY_SHIFT,D3
 			BGE	.NotTop
 
 			; Hit top, zero out vertical speed
-			MOVE.W	#18<<PLY_POSY_SHIFT,D3
+			MOVE.W	#18 << OBJ_POSY_SHIFT,D3
 			CLR.W	D5
 .NotTop:
 			; Check if hit bottom
-			CMP.W	#180<<PLY_POSY_SHIFT,D3
+			CMP.W	#180 << OBJ_POSY_SHIFT,D3
 			BLE	.NotBottom
 
 			; Hit bottom, reverse vertical speed to make player bounce
-			MOVE.W	#180<<PLY_POSY_SHIFT,D3		
+			MOVE.W	#180 << OBJ_POSY_SHIFT,D3		
 			NEG.W	D5		
 .NotBottom:
 			; Store players's new position and speed
@@ -227,7 +228,7 @@ PLY_MoveAll:		LEA	PLY_Player1,A3
 			ADD.W	D1,D1
 			ADD.W	D1,D1
 			ADD.W	D1,D0
-			SUB.W 	#((GFX_DISPLAY_WIDTH+GFX_DISPLAY_HIDE_LEFT+GFX_DISPLAY_HIDE_RIGHT-24)/2)<<PLY_POSX_SHIFT,D0
+			SUB.W 	#((GFX_DISPLAY_WIDTH+GFX_DISPLAY_HIDE_LEFT+GFX_DISPLAY_HIDE_RIGHT-24)/2)<<OBJ_POSX_SHIFT,D0
 			MOVE.W	D0,OBJ_WorldX
 
 			; Check for player firing
@@ -265,15 +266,15 @@ PLY_DrawAll:		LEA	PLY_Player1,A3
 			BCC	.Next
 
 			; Convert world coordinates into screen coordinates
-			LSR.W	#PLY_POSX_SHIFT,D1
-			LSR.W	#PLY_POSY_SHIFT,D2
+			LSR.W	#OBJ_POSX_SHIFT,D1
+			LSR.W	#OBJ_POSY_SHIFT,D2
 
 			; Blit object
 			MOVE.W	#(40<<6)|3,D0
 			MOVE.L	D5,A0
 			MOVE.L	(Player.BlitData,A3),A1
 			LEA	(160,A1),A2
-			BSR 	GFX_Blit
+			;BSR 	GFX_Blit
 			MOVE.L	D7,A3
 
 			; Get address of next object

@@ -289,7 +289,7 @@ APP_MoveObjects:	; Calculate bounding box around all lasers
 
 .NoObj:			; Move objects
 			MOVE.L	APP_ObjectList,D0
-			BSR	OBJ_MoveAll
+			;BSR	OBJ_MoveAll
 
 			; Move lasers
 			BSR	LSR_MoveAll

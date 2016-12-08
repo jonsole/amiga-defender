@@ -21,6 +21,6 @@ Object.Flags		RS.B	0	; Generic flags	0 - Use alt sprite for 1 frame
 Object.SizeOf:		RS.W	0
 
 OBJ_POSX_SHIFT		EQU	4
-OBJ_POSY_SHIFT		EQU	7
+OBJ_POSY_SHIFT		EQU	4
 
 OBJ_FLAG_ALT_SPRITE	EQU	0

@@ -225,7 +225,7 @@ OBJ_CheckBoxCollision:	; Exit if pointer is 0
 *   OBJ_DrawAll: Draw all objects in list
 * Synopsis
 *   OBJ_DrawAll(Bitplane, ObjectList, CopperList, ClearList)
-*               D5        A3          A4          A5
+*               A2        A3          A4          ??
 * Function
 *   This function draws all objects in list
 * Registers
@@ -236,48 +236,52 @@ OBJ_CheckBoxCollision:	; Exit if pointer is 0
 OBJ_DrawAll:		; Initialise blitter and sprite queue
 			BSR	GFX_InitBlit16x
 			BSR	GFX_InitSprites
+			;A5 = Position Table, D5 = Mask
 
 			; Copy object list into D7, as blitting will corrupt A3
-			MOVE.L	A3,D7
+			;MOVE.L	A3,D7
 
 .Loop:			; Get object position
 			MOVEM.W	(Object.SizeY,A3),D0-D2
 			
 			; Check if object is not visible
 			SUB.W	OBJ_WorldX,D1
-			CMP.W	#(GFX_DISPLAY_HIDE_LEFT+GFX_DISPLAY_WIDTH+GFX_DISPLAY_HIDE_RIGHT-16)<<4,D1
+			CMP.W	#(GFX_DISPLAY_HIDE_LEFT+GFX_DISPLAY_WIDTH+GFX_DISPLAY_HIDE_RIGHT-16)<<OBJ_POSX_SHIFT,D1
 			BCC	.Next
 
-			; Convert world coordinates into screen coordinates
-			LSR.W	#OBJ_POSX_SHIFT,D1
-			LSR.W	#OBJ_POSY_SHIFT,D2
-
 			; Check if we should use alternate sprite data for this frame
-			BTST.B	#OBJ_FLAG_ALT_SPRITE,(Object.Flags,A3)
-			BEQ	.NoAlt
-			BCLR.B	#OBJ_FLAG_ALT_SPRITE,(Object.Flags,A3)
-			LEA	(4,A3),A3
+			;BTST.B	#OBJ_FLAG_ALT_SPRITE,(Object.Flags,A3)
+			;BEQ	.NoAlt
+			;BCLR.B	#OBJ_FLAG_ALT_SPRITE,(Object.Flags,A3)
+			;LEA	(4,A3),A3
 
-.NoAlt:			; Add object to sprite queue, carry set if unable to queue
-			MOVE.L 	(Object.SpriteData,A3),A1
+.NoAlt:			; Mask out sub-pixel position bits
+			AND.W	D5,D1 
+			AND.W	D5,D2 
+			AND.W	D5,D0
+			
+			; Add object to sprite queue, carry set if unable to queue
+			MOVE.L 	(Object.SpriteData,A3),D3
 			BSR	GFX_QueueSprite
-			BNE	.Next
+			BCC	.Next
+			; D0-D4/A0-A1/A4 changed
 
 			; Blit object
-			MOVE.W	#(40<<6)|2,D0 ; TODO convert SizeY in D0 to blitsize
-			MOVE.L	D5,A0
-			MOVE.L	(Object.BlitData,A3),A1
-			LEA	(128,A1),A2
-			BSR 	GFX_Blit
+			; D3 - BlitData
+			; D1 - PosX << 4
+			; D2 - PosY << 4
+			; D0 - Height << 4
+			; A2 - Bitplane
+			MOVE.L	(Object.BlitData,A3),D3
+			BSR 	GFX_Blit16x
 			
 			; Get address of next object
 			; Loop back if it is not 0
-.Next:			MOVE.L	D7,A3
-			MOVE.L	(Object.Next,A3),D7
+.Next:			MOVE.L	(Object.Next,A3),D7
 			MOVE.L	D7,A3
 			BNE	.Loop
 
 .EndOfList:		BSR 	GFX_FinaliseSprites
-			BSR	GFX_FinaliseBlit16x
+			;BSR	GFX_FinaliseBlit16x
 			RTS
 

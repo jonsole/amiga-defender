@@ -285,6 +285,15 @@ GFX_SpriteTable:	REPT	336
  			ENDR
 
 
+GFX_WAIT_BLIT:		MACRO
+			BTST.B  #6,(DMACONR,A6)
+			BEQ	.\@Done
+			MOVE.W	#DMACON_SET|DMACON_BLTPRI,(DMACON,A6)
+.\@Wait:		BTST.B  #6,(DMACONR,A6)
+			BNE	.\@Wait
+.\@Done:			
+			ENDM
+
 
 *****************************************************************************
 * Name
@@ -297,8 +306,7 @@ GFX_SpriteTable:	REPT	336
 *   blitter register that do not change in between blits.
 *****************************************************************************
 			XDEF	GFX_InitBlit16x
-GFX_InitBlit16x:	BTST.B  #6,(DMACONR,A6)
-			BNE	GFX_InitBlit16x
+GFX_InitBlit16x:	GFX_WAIT_BLIT
 
 			; Preset BLTxMOD registers, they don't change when blitting objects of the same size
 			MOVE.W	#-2,(BLTAMOD,A6)
@@ -306,11 +314,12 @@ GFX_InitBlit16x:	BTST.B  #6,(DMACONR,A6)
         		MOVE.W	#GFX_BITPLANE_BYTES_PER_LINE-4,(BLTDMOD,A6)
 	        	MOVE.W	#GFX_BITPLANE_BYTES_PER_LINE-4,(BLTCMOD,A6)
 			MOVE.L	#$FFFF0000,(BLTAFWM,A6)
+			MOVEQ	#$FFFFFFF0,D5
 			RTS
 
+
 			XDEF	GFX_InitBlit32x
-GFX_InitBlit32x:	BTST.B  #6,(DMACONR,A6)
-			BNE	GFX_InitBlit32x
+GFX_InitBlit32x:	GFX_WAIT_BLIT
 
 			; Preset BLTxMOD registers, they don't change when blitting objects of the same size
 			MOVE.W	#-2,(BLTAMOD,A6)
@@ -318,12 +327,13 @@ GFX_InitBlit32x:	BTST.B  #6,(DMACONR,A6)
         		MOVE.W	#GFX_BITPLANE_BYTES_PER_LINE-6,(BLTDMOD,A6)
 	        	MOVE.W	#GFX_BITPLANE_BYTES_PER_LINE-6,(BLTCMOD,A6)
 			MOVE.L	#$FFFF0000,(BLTAFWM,A6)
+			MOVEQ	#$FFFFFFF0,D5
 			RTS
 
 			XDEF	GFX_FinaliseBlit16x
 			XDEF	GFX_FinaliseBlit32x
 GFX_FinaliseBlit32x:
-GFX_FinaliseBlit16x:	CLR.W	(A5)+
+GFX_FinaliseBlit16x:	CLR.W	(A2)+
 			RTS
 
 
@@ -336,8 +346,8 @@ GFX_BlitTable:		REPT	336
 			DC.W	((.X >> 4) * 2)				; X offset
 			DC.W	BLTCON0_USEA | BLTCON0_USEB | BLTCON0_USEC | BLTCON0_USED | $00CA | ((.X & $0F) << 12)  ; blitcon0
 			DC.W	((.X & $0F) << 12) ; blitcon1
-			DC.W	(.HEIGHT << 6) | $0002  ; BLTSIZE x 16
-			DC.W	0 ; BLTSIZE x 32
+			DC.W	(((.HEIGHT * GFX_DISPLAY_DEPTH) & $3FF) << 6) | $0002  ; BLTSIZE x 16
+			DC.W	(((.HEIGHT * GFX_DISPLAY_DEPTH) & $3FF) << 6) | $0003  ; BLTSIZE x 32
 			DC.W	0 ; spare
 			ENDR
 
@@ -345,24 +355,24 @@ GFX_BlitTable:		REPT	336
 * Name
 *   GFX_Blit: Blit
 * Synopsis
-*   Dest,ClearList = GFX_Blit16x(Custom, Height, PosX, PosY, Bitplane BlitData)
-*   A0   A5                      A6      D0      D1    D2    A2       D3
+*   Dest,ClearList = GFX_Blit16x(Custom, Height, PosX, PosY, Bitplane BlitData, BlitMask, ClearList)
+*   A0   A2                      A6      D0      D1    D2    D6       D3        D4        A2
 * Function
 *   This function performs a blit.
 * Registers
-*   A0/A3/D1-D3: corrupted
+*   A1/D0-D2/D7: corrupted
 *****************************************************************************
 ; Don't change A4-A6/D5
 
 			XDEF	GFX_Blit16x
-GFX_Blit16x:	        LEA	(GFX_BlitTable,PC),A1
-
-			MOVE.L	A2,A0
+GFX_Blit16x:		LEA	(GFX_BlitTable,PC),A1
 
 			; Convert X & Y positions into offsets and add to bitplane address
-			ADD.L	(0,A1,D2.W),A0	; 6+14
-			ADD.W	(4,A1,D1.W),A0	; 8+10
-			; A0 = BLTCPT & BLTDPT
+			MOVEQ	#0,D7
+			MOVE.W	(4,A1,D1.W),D7
+			ADD.L	(0,A1,D2.W),D7
+			ADD.L	D6,D7
+			; D2 = BLTCPT & BLTDPT
 
 			; Set BLTCON0 and BLTCON1 in D1.L
 			MOVE.L	(6,A1,D1.W),D1
@@ -370,79 +380,108 @@ GFX_Blit16x:	        LEA	(GFX_BlitTable,PC),A1
 			; Get BLTSIZE in D0
 			MOVE.W	(10,A1,D0.W),D0
 
-			; Check if blitter is free
-			MOVE.W  #$0FF0,(COLOR00,A6)
-			MOVE.W	#DMACON_SET|DMACON_BLTPRI,(DMACON,A6)
-.WaitBlit:		BTST.B  #6,(DMACONR,A6)
-			BNE	.WaitBlit
-			MOVE.W  #$0000,(COLOR00,A6)
+			; Copy BLTDPT in D7 to BLTAPT in D2
+			MOVE.L 	D7,D2
 
-			MOVE.L 	D3,D4
-			ADD.L	#128,D4
+			; Save BLTSIZE and BLTDPT for clearing screen later
+			MOVE.W	D0,(A2)+
+			MOVE.L	D7,(A2)+
+
+			; Check if blitter is free
+			GFX_WAIT_BLIT			
 
 			; Program blitter
 			MOVE.L	D1,(BLTCON0,A6)
-			MOVEM.L A0/D3/D4,(BLTCPTH,A6) ;A0->BLTCPT,D3->BLTBPT,D4->BLTAPT
-			MOVE.L	A0,(BLTDPTH,A6)
+			MOVEM.L D2/D3/D4/D7,(BLTCPTH,A6) ;D2->BLTCPT,D3->BLTBPT,D4->BLTAPT,D7->BLTDPT
 			MOVE.W	#DMACON_BLTPRI,(DMACON,A6)
-			MOVE.W	#$5555,(A0)
 			MOVE.W	D0,(BLTSIZE,A6)
 			RTS
+
+
+			XDEF	GFX_Blit32x
+GFX_Blit32x:	        LEA	(GFX_BlitTable,PC),A1
+
+			; Convert X & Y positions into offsets and add to bitplane address
+			MOVEQ	#0,D7
+			MOVE.W	(4,A1,D1.W),D7
+			ADD.L	(0,A1,D2.W),D7
+			ADD.L	D6,D7
+			; D2 = BLTCPT & BLTDPT
+
+			; Set BLTCON0 and BLTCON1 in D1.L
+			MOVE.L	(6,A1,D1.W),D1
+
+			; Get BLTSIZE in D0
+			MOVE.W	(12,A1,D0.W),D0
+
+			; Copy BLTDPT in D7 to BLTAPT in D2
+			MOVE.L 	D7,D2
+
+			; Save BLTSIZE and BLTDPT for clearing screen later
+			MOVE.W	D0,(A2)+
+			MOVE.L	D7,(A2)+
+
+			; Check if blitter is free
+			GFX_WAIT_BLIT			
+
+			; Program blitter
+			MOVE.L	D1,(BLTCON0,A6)
+			MOVEM.L D2/D3/D4/D7,(BLTCPTH,A6) ;D2->BLTCPT,D3->BLTBPT,D4->BLTAPT,D7->BLTDPT
+			MOVE.W	#DMACON_BLTPRI,(DMACON,A6)
+			MOVE.W	D0,(BLTSIZE,A6)
+			RTS
+
 
 *****************************************************************************
 * Name
 *   GFX_ClearList16x: Clear blits
 * Synopsis
 *   GFX_ClearList16x(Custom, ClearList)
-*		     A6      A5
+*		     A6      A2
 * Function
 *   This function clears blits as specified in ClearList.
 *****************************************************************************
 			XDEF	GFX_ClearList16x
-GFX_ClearList16x:	BTST.B  #6,(DMACONR,A6)
-			BNE	GFX_ClearList16x
+GFX_ClearList16x:	GFX_WAIT_BLIT			
 			MOVE.W	#GFX_BITPLANE_BYTES_PER_LINE-4,(BLTDMOD,A6)
 			MOVE.W	#0,(BLTCON1,A6)
 			MOVE.W	#BLTCON0_USED,(BLTCON0,A6)
 			MOVE.W	#DMACON_SET|DMACON_BLTPRI,(DMACON,A6)
 
-			MOVE.W	(A5)+,D0
+			MOVE.W	(A2)+,D0
 			BEQ	.EndOfList
-.Loop			MOVE.L	(A5)+,A0
+.Loop			MOVE.L	(A2)+,A0
 
-.WaitBlit:		BTST.B  #6,(DMACONR,A6)
-			BNE	.WaitBlit
+			GFX_WAIT_BLIT
 
 			MOVE.L	A0,(BLTDPTH,A6)
 			MOVE.W	D0,(BLTSIZE,A6)
 
 			; TODO: Clear next using CPU
 
-			MOVE.W	(A5)+,D0
+			MOVE.W	(A2)+,D0
 			BNE	.Loop
 .EndOfList:		RTS
 
 			XDEF	GFX_ClearList32x
-GFX_ClearList32x:	BTST.B  #6,(DMACONR,A6)
-			BNE	GFX_ClearList32x
+GFX_ClearList32x:	GFX_WAIT_BLIT
 			MOVE.W	#GFX_BITPLANE_BYTES_PER_LINE-6,(BLTDMOD,A6)
 			MOVE.W	#0,(BLTCON1,A6)
 			MOVE.W	#BLTCON0_USED,(BLTCON0,A6)
 			MOVE.W	#DMACON_SET|DMACON_BLTPRI,(DMACON,A6)
 
-			MOVE.W	(A5)+,D0
+			MOVE.W	(A2)+,D0
 			BEQ	.EndOfList
-.Loop			MOVE.L	(A5)+,A0
+.Loop			MOVE.L	(A2)+,A0
 
-.WaitBlit:		BTST.B  #6,(DMACONR,A6)
-			BNE	.WaitBlit
+			GFX_WAIT_BLIT
 
 			MOVE.L	A0,(BLTDPTH,A6)
 			MOVE.W	D0,(BLTSIZE,A6)
 
 			; TODO: Clear next using CPU
 
-			MOVE.W	(A5)+,D0
+			MOVE.W	(A2)+,D0
 			BNE	.Loop
 .EndOfList:		RTS
 

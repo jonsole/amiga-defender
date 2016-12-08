@@ -14,9 +14,9 @@ Object.AccelY:		RS.W	1
 Object.AccelYCount:	RS.W	1
 Object.Weight:		RS.W	1
 Object.SpriteData:	RS.L	1
-Object.SpriteHitData:	RS.L	1
+Object.SpriteData2:	RS.L	1
 Object.BlitData:	RS.L	1
-Object.BlitHitData:	RS.L	1
+Object.BlitMask:	RS.L	1
 Object.Flags		RS.B	0	; Generic flags	0 - Use alt sprite for 1 frame
 Object.SizeOf:		RS.W	0
 

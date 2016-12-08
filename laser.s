@@ -137,18 +137,23 @@ LSR_DrawAll:		; Initialise blitter
 			SUB.W	OBJ_WorldX,D1
 			CMP.W	#(GFX_DISPLAY_HIDE_LEFT+GFX_DISPLAY_WIDTH+GFX_DISPLAY_HIDE_RIGHT-16)<<4,D1
 			BCC	.Next
-			
-			; Convert world coordinates into screen coordinates
-			LSR.W	#OBJ_POSX_SHIFT,D1
-			LSR.W	#OBJ_POSY_SHIFT,D2
 
+			; Mask out sub-pixel position bits
+			AND.W	D5,D1 
+			AND.W	D5,D2 
+			
 			; Blit object
-			MOVE.W	#(4<<6)|2,D0
-			MOVE.L	D5,A0
-			MOVE.L	(Laser.BlitData,A3),A1
-			LEA	(128,A1),A2
-			;BSR 	GFX_Blit
-			MOVE.L	D7,A3
+			; D3 - BlitData
+			; D4 - BlitMask
+			; D1 - PosX << 4
+			; D2 - PosY << 4
+			; D0 - Height << 4
+			; D6 - Bitplane
+			MOVE.L	(Object.BlitData,A3),D3		
+			MOVE.L	D3,D4
+			ADD.L	#128,D4
+			MOVEQ	#(1 << OBJ_POSY_SHIFT),D0
+			BSR 	GFX_Blit16x
 
 			; Get address of next object
 			; Loop back if it is not 0

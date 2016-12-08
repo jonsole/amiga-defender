@@ -11,7 +11,7 @@ PLY_AccelXTable:	DC.B	-5,-8,-10,-15,-20,-10,0,10,20,15,10,8,5
 PLY_Player1:		DC.L	0
 			DC.W	-100 << OBJ_POSX_SHIFT, 100 << OBJ_POSY_SHIFT
 			DC.W	0,0
-			DC.W	10
+			DC.W	2
 			DC.W	0,0
 			DC.L	PlayerDataRight	;BlitData
 			DC.B	0		;Fire
@@ -53,7 +53,7 @@ PLY_FireJoystick2:	BTST.B	#7,$BFE001
 			EXT.W	D4
 .FireLeftLoop:		MOVE.B  (Player.Direction,A3),D3
 			BSR	LSR_Create
-			ADD.W	#LSR_SPEED_SPREAD,D2			
+			ADD.W	#LSR_SPEED_SPREAD,D2
 			DBRA	D4,.FireLeftLoop
 			RTS
 
@@ -69,7 +69,7 @@ PLY_FireJoystick2:	BTST.B	#7,$BFE001
 			EXT.W	D4
 .FireRightLoop:		MOVE.B  (Player.Direction,A3),D3
 			BSR	LSR_Create
-			SUB.W	#LSR_SPEED_SPREAD,D2			
+			SUB.W	#LSR_SPEED_SPREAD,D2
 			DBRA	D4,.FireRightLoop
 			RTS
 
@@ -241,7 +241,7 @@ PLY_MoveAll:		LEA	PLY_Player1,A3
 *   PLY_DrawAll: Draw all players in list
 * Synopsis
 *   PLY_DrawAll(Bitplane, ObjectList, ClearList)
-*               D5         A3          A5
+*               D6        A3          A5
 * Function
 *   This function draws all players in list
 * Registers
@@ -254,9 +254,6 @@ PLY_DrawAll:		LEA	PLY_Player1,A3
 			; Initialise blitter 
 			BSR	GFX_InitBlit32x
 
-			; Copy object list into D7, as blitting will corrupt A3
-			MOVE.L	A3,D7
-
 .Loop:			; Get object position
 			MOVEM.W	(Player.PosX,A3),D1-D2
 			
@@ -265,17 +262,22 @@ PLY_DrawAll:		LEA	PLY_Player1,A3
 			CMP.W	#(GFX_DISPLAY_HIDE_LEFT+GFX_DISPLAY_WIDTH+GFX_DISPLAY_HIDE_RIGHT-16)<<4,D1
 			BCC	.Next
 
-			; Convert world coordinates into screen coordinates
-			LSR.W	#OBJ_POSX_SHIFT,D1
-			LSR.W	#OBJ_POSY_SHIFT,D2
+			; Mask out sub-pixel position bits
+			AND.W	D5,D1 
+			AND.W	D5,D2 
 
 			; Blit object
-			MOVE.W	#(40<<6)|3,D0
-			MOVE.L	D5,A0
-			MOVE.L	(Player.BlitData,A3),A1
-			LEA	(160,A1),A2
-			;BSR 	GFX_Blit
-			MOVE.L	D7,A3
+			; D3 - BlitData
+			; D4 - BlitMask
+			; D1 - PosX << 4
+			; D2 - PosY << 4
+			; D0 - Height << 4
+			; D6 - Bitplane
+			MOVE.W	#10<<OBJ_POSY_SHIFT,D0
+			MOVE.L	(Player.BlitData,A3),D3
+			MOVE.L  D3,D4
+			ADD.L	#160,D4
+			BSR 	GFX_Blit32x
 
 			; Get address of next object
 			; Loop back if it is not 0

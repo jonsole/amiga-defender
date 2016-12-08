@@ -161,8 +161,6 @@ OBJ_CheckBoxCollision:	; Exit if pointer is 0
 
 .MoveLoop:		; Get object size & position
 			MOVEM.W	(Object.SizeX,A3),D4-D7
-			LSL.W	#OBJ_POSX_SHIFT,D4 ; Adjust SizeX
-			LSL.W	#OBJ_POSY_SHIFT,D5 ; Adjust SizeY
 
 			;D6/D7 = R2 left/top
 			;0/D1 = R1 left/top
@@ -225,7 +223,7 @@ OBJ_CheckBoxCollision:	; Exit if pointer is 0
 *   OBJ_DrawAll: Draw all objects in list
 * Synopsis
 *   OBJ_DrawAll(Bitplane, ObjectList, CopperList, ClearList)
-*               A2        A3          A4          ??
+*               D6        A3          A4          A2
 * Function
 *   This function draws all objects in list
 * Registers
@@ -237,9 +235,6 @@ OBJ_DrawAll:		; Initialise blitter and sprite queue
 			BSR	GFX_InitBlit16x
 			BSR	GFX_InitSprites
 			;A5 = Position Table, D5 = Mask
-
-			; Copy object list into D7, as blitting will corrupt A3
-			;MOVE.L	A3,D7
 
 .Loop:			; Get object position
 			MOVEM.W	(Object.SizeY,A3),D0-D2
@@ -261,19 +256,21 @@ OBJ_DrawAll:		; Initialise blitter and sprite queue
 			AND.W	D5,D0
 			
 			; Add object to sprite queue, carry set if unable to queue
-			MOVE.L 	(Object.SpriteData,A3),D3
+			MOVEM.L (Object.SpriteData,A3),D3-D4
 			BSR	GFX_QueueSprite
 			BCC	.Next
 			; D0-D4/A0-A1/A4 changed
 
 			; Blit object
 			; D3 - BlitData
+			; D4 - BlitMask
 			; D1 - PosX << 4
 			; D2 - PosY << 4
 			; D0 - Height << 4
-			; A2 - Bitplane
-			MOVE.L	(Object.BlitData,A3),D3
+			; D6 - Bitplane
+			MOVEM.L	(Object.BlitData,A3),D3-D4
 			BSR 	GFX_Blit16x
+			; D0-D2/D7/A1 changed
 			
 			; Get address of next object
 			; Loop back if it is not 0
@@ -282,6 +279,6 @@ OBJ_DrawAll:		; Initialise blitter and sprite queue
 			BNE	.Loop
 
 .EndOfList:		BSR 	GFX_FinaliseSprites
-			;BSR	GFX_FinaliseBlit16x
+			BSR	GFX_FinaliseBlit16x
 			RTS
 

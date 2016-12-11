@@ -2,26 +2,77 @@
 			INCLUDE "objects.i"
 			INCLUDE "player.i"
 			
-OBJ_FreeList:		DC.L	1
+			SECTION BSS,BSS
+OBJ_ActiveList:		DS.L	1
+OBJ_FreeList:		DS.L	1
+OBJ_Table:		DS.B	Object.SizeOf*OBJ_MAX_NUM
+
 			XDEF	OBJ_WorldX
 OBJ_WorldX:		DC.W	0
+
 			SECTION	CODE,CODE
+
+*****************************************************************************
+* Name
+*   OBJ_Init: Initialise object list 
+* Synopsis
+*   OBJ_Init()
+* Function
+*   This function intialise the global object list. 
+* Registers
+*   D0/A0: corrupted
+*****************************************************************************
+			XDEF	OBJ_Init
+OBJ_Init:		LEA	OBJ_Table,A0
+			CLR.L	OBJ_ActiveList
+			CLR.L	OBJ_FreeList
+
+			MOVE.W	#OBJ_MAX_NUM-1,D0
+
+.Loop:			MOVE.L	OBJ_FreeList,(Object.Next,A0)
+			MOVE.L	A0,OBJ_FreeList
+			LEA	(Object.SizeOf,A0),A0
+			DBRA	D0,.Loop
+			RTS
+
+*****************************************************************************
+* Name
+*   OBJ_Create: Create object from free list 
+* Synopsis
+*   Object = OBJ_Create()
+*   D0
+* Function
+*   This function create a new object from the free list. 
+* Registers
+*   D0/A0: corrupted
+*****************************************************************************
+			XDEF	OBJ_Create
+OBJ_Create:		TST.L	OBJ_FreeList
+			BEQ	.Exit
+			MOVE.L	OBJ_FreeList,A0
+
+			; Update free list
+			MOVE.L	(Object.Next,A0),OBJ_FreeList
+
+			; Add to head of active list
+			MOVE.L	OBJ_ActiveList,(Object.Next,A0)
+			MOVE.L	A0,OBJ_ActiveList
+			MOVE.L	A0,D0
+.Exit:			RTS
+
 
 *****************************************************************************
 * Name
 *   OBJ_MoveAll: Move all objects in list
 * Synopsis
-*   OBJ_MoveAll(ObjectList)
-*               D0
+*   OBJ_MoveAll()
 * Function
 *   This function moves all objects in list according to speed and accleration 
 * Registers
 *   D0-D5/A3: corrupted
 *****************************************************************************
 			XDEF	OBJ_MoveAll
-
-OBJ_MoveAll:		; Exit if pointer is 0
-			TST.L	D0
+OBJ_MoveAll:		MOVE.L	OBJ_ActiveList, D0
 			BEQ	.Exit
 
 .MoveLoop:		; Copy pointer to A3
@@ -34,14 +85,12 @@ OBJ_MoveAll:		; Exit if pointer is 0
 			MOVE.W	D0,(Object.AccelXCount,A3)
 			ADD.W	D0,(Object.SpeedX,A3)
 .NoAccelX:
-
 			MOVE.W	(Object.AccelYCount,A3),D0
 			SUB.W	#1,D0
 			BMI	.NoAccelY
 			MOVE.W	D0,(Object.AccelYCount,A3)
 			ADD.W	D0,(Object.SpeedY,A3)
 .NoAccelY:
-
 			; Get object position, speed
 			MOVEM.W	(Object.PosX,A3),D0-D3
 
@@ -76,14 +125,20 @@ OBJ_MoveAll:		; Exit if pointer is 0
 
 
 
-
-
-
-
-
+*****************************************************************************
+* Name
+*   OBJ_SortAll: Sort all objects in list by vertical position
+* Synopsis
+*   OBJ_SortAll()
+* Function
+*   This function sorts all object in the active list by ascending vertical
+*   position. 
+* Registers
+*   D0-D1/A0-A3: corrupted
+*****************************************************************************
 			XDEF	OBJ_SortAll
-OBJ_SortAll:		
-			; Copy list address into A1
+OBJ_SortAll:		; Get list address into A0, A1
+			LEA	OBJ_ActiveList,A0
 			MOVE.L	A0,A1
 
 			; Get first and second objects, exit if less than 2 objects
@@ -150,11 +205,18 @@ OBJ_SortAll:
 * Registers
 *   ???: corrupted
 *****************************************************************************
-			XDEF	OBJ_CheckBoxCollision
+			XDEF	OBJ_CheckBoxCollisionInit
+OBJ_CheckBoxCollisionInit:
+			MOVE.L	OBJ_ActiveList,D4
+			RTS
 
-OBJ_CheckBoxCollision:	; Exit if pointer is 0
-			MOVE.L	A3,D4
-			BEQ	.Exit
+			XDEF	OBJ_CheckBoxCollisionNext
+OBJ_CheckBoxCollisionNext:		
+			MOVE.L	(Object.Next,A3),D4
+			RTS
+
+			XDEF	OBJ_CheckBoxCollision
+OBJ_CheckBoxCollision:	MOVE.L	D4,A3
 
 			; Convert bounding box right to width
 			SUB.W	D0,D2
@@ -189,7 +251,6 @@ OBJ_CheckBoxCollision:	; Exit if pointer is 0
 
 .NotIn:			; Get address of next object in list
 			MOVE.L	(Object.Next,A3),D4
-			MOVE.L	D4,A3
 
 			; Loop back if address is not 0
 			BNE	.MoveLoop
@@ -230,13 +291,17 @@ OBJ_CheckBoxCollision:	; Exit if pointer is 0
 *   ??: corrupted
 *****************************************************************************
 			XDEF	OBJ_DrawAll
-
 OBJ_DrawAll:		; Initialise blitter and sprite queue
 			BSR	GFX_InitBlit16x
 			BSR	GFX_InitSprites
 			;A5 = Position Table, D5 = Mask
 
-.Loop:			; Get object position
+			MOVE.L	OBJ_ActiveList,D7
+			BEQ	.EndOfList
+
+.Loop:			MOVE.L	D7,A3
+
+			; Get object position
 			MOVEM.W	(Object.SizeY,A3),D0-D2
 			
 			; Check if object is not visible
@@ -256,7 +321,7 @@ OBJ_DrawAll:		; Initialise blitter and sprite queue
 			AND.W	D5,D0
 			
 			; Add object to sprite queue, carry set if unable to queue
-			MOVEM.L (Object.SpriteData,A3),D3-D4
+			MOVEM.W (Object.SpriteData,A3),D3-D4
 			BSR	GFX_QueueSprite
 			BCC	.Next
 			; D0-D4/A0-A1/A4 changed
@@ -275,7 +340,6 @@ OBJ_DrawAll:		; Initialise blitter and sprite queue
 			; Get address of next object
 			; Loop back if it is not 0
 .Next:			MOVE.L	(Object.Next,A3),D7
-			MOVE.L	D7,A3
 			BNE	.Loop
 
 .EndOfList:		BSR 	GFX_FinaliseSprites

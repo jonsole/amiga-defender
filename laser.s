@@ -5,8 +5,10 @@
 
 DEBUG_LASER_BOUND_BOX	EQU	0
 
-			SECTION	DATA,DATA
+			SECTION BSS,BSS
 LSR_Table:		DS.B	Laser.SizeOf*LSR_MAX_NUM
+
+			SECTION	DATA,DATA
 LSR_ActiveList:		DC.L	0
 LSR_FreeList:		DC.L	0
 
@@ -149,7 +151,7 @@ LSR_DrawAll:		; Initialise blitter
 			; D2 - PosY << 4
 			; D0 - Height << 4
 			; D6 - Bitplane
-			MOVE.L	(Object.BlitData,A3),D3		
+			MOVE.L	(Laser.BlitData,A3),D3
 			MOVE.L	D3,D4
 			ADD.L	#128,D4
 			MOVEQ	#(1 << OBJ_POSY_SHIFT),D0

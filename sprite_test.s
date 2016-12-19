@@ -3,6 +3,7 @@
 			INCLUDE "objects.i"
 			INCLUDE "player.i"
 			INCLUDE "laser.i"
+			INCLUDE "particle.i"
 
 			XREF	SYS_TakeOver
 
@@ -10,8 +11,8 @@
 
 
 			SECTION BSS, BSS
-APP_ClearList1:		DS.W	2000
-APP_ClearList2:		DS.W	2000
+APP_ClearList1:		DS.W	10000
+APP_ClearList2:		DS.W	10000
 
 APP_BitplaneMemory1	DS.L	1
 APP_BitplaneMemory2	DS.L	1
@@ -57,6 +58,7 @@ APP_Main:               ; Set interrupt1 vector
 			; Initialise 
 			BSR	OBJ_Init
 			BSR	LSR_Init
+			BSR	PART_Init
 
 			; Initialise BLIT clear lists
 			CLR.L	APP_ClearList1
@@ -64,22 +66,50 @@ APP_Main:               ; Set interrupt1 vector
 
 			BSR	OBJ_Create
 			MOVE.L	D0,A0
-			MOVE.L	#SpriteMove,(Object.MoveFunction,A0)
+			MOVE.L	#OBJ_DefaultMove,(Object.MoveFunction,A0)
 			MOVE.L	#SpriteHit,(Object.HitFunction,A0)
 			MOVE.W	#16<<OBJ_POSX_SHIFT,(Object.SizeX,A0)
 			MOVE.W	#10<<OBJ_POSY_SHIFT,(Object.SizeY,A0)
-			MOVE.W	#0<<OBJ_POSX_SHIFT,(Object.PosX,A0)
+			MOVE.W	#90<<OBJ_POSX_SHIFT,(Object.PosX,A0)
 			MOVE.W	#100<<OBJ_POSY_SHIFT,(Object.PosY,A0)
+			MOVE.W	#1,(Object.Weight,A0)
 			MOVE.L	#Alien1Sprite,D0
 			MOVE.W	D0,(Object.SpriteData,A0)
 			ADD.W	#64,D0
 			MOVE.W	D0,(Object.SpriteData2,A0)
+			MOVE.L	#Alien1FlashSprite,D0
+			MOVE.W	D0,(Object.SpriteAltData,A0)
+			ADD.W	#64,D0
+			MOVE.W	D0,(Object.SpriteAltData2,A0)
+			BSR	OBJ_AddToDrawList
+
+			BSR	OBJ_Create
+			MOVE.L	D0,A0
+			MOVE.L	#OBJ_DefaultMove,(Object.MoveFunction,A0)
+			MOVE.L	#SpriteHit,(Object.HitFunction,A0)
+			MOVE.W	#16<<OBJ_POSX_SHIFT,(Object.SizeX,A0)
+			MOVE.W	#10<<OBJ_POSY_SHIFT,(Object.SizeY,A0)
+			MOVE.W	#80<<OBJ_POSX_SHIFT,(Object.PosX,A0)
+			MOVE.W	#100<<OBJ_POSY_SHIFT,(Object.PosY,A0)
+			MOVE.W	#2,(Object.Weight,A0)
+			MOVE.L	#Alien1Sprite,D0
+			MOVE.W	D0,(Object.SpriteData,A0)
+			ADD.W	#64,D0
+			MOVE.W	D0,(Object.SpriteData2,A0)
+			MOVE.L	#Alien1FlashSprite,D0
+			MOVE.W	D0,(Object.SpriteAltData,A0)
+			ADD.W	#64,D0
+			MOVE.W	D0,(Object.SpriteAltData2,A0)
+			BSR	OBJ_AddToDrawList
 
 			; Initialise graphics subsystem, this will start vertical
 			; blank interrupts
 			BSR     GFX_Init
 
-.Loop:			; Loop back if left mouse button not pressed
+.Loop:			; Wait for interrupt
+			STOP	#$2000
+
+			; Loop back if left mouse button not pressed
 			BTST	#6,$BFE001
  			BNE	.Loop
 			RTS
@@ -154,6 +184,9 @@ APP_ClearObjects:	; Clear Objects
 
 			; Clear Lasers
 			BSR	GFX_ClearList16x
+
+			; Clear particles
+			BSR	PART_ClearAll
 			RTS
 
 
@@ -172,25 +205,34 @@ APP_DrawObjects:	; Draw Objects
                         MOVE.W  #$0F80,(COLOR00,A6)
 			BSR	LSR_DrawAll
                         MOVE.W  #$0000,(COLOR00,A6)
+
+			; Draw particles
+                        MOVE.W  #$0FF0,(COLOR00,A6)
+			BSR	PART_DrawAll
+                        MOVE.W  #$0000,(COLOR00,A6)
+			
 			RTS
 
 
 *****************************************************************************
 APP_MoveObjects:	; Calculate bounding box around all lasers
 			BSR	LSR_CalcBoundBox
+			; Bounding box in D0-D1/D2-D3
 
-			; Find objects within bounding box
 			BSR	OBJ_CheckBoxCollisionInit
 			BEQ	.NoObj
-.CheckLoop:		BSR	OBJ_CheckBoxCollision
-			
+
+.CheckLoop:		; Find next object within bounding box
 			; Jump out of loop if no (more) objects within laser bounding box
+			BSR	OBJ_CheckBoxCollision
 			BEQ	.NoObj
+			;D4-D5/D6-D7 = Object bounding box
+
+			; Save laser bounding box
+			MOVEM.W	D0-D3,-(SP)
 
 			; Check if any lasers are actualling with in objects bounding box
-			MOVEM.L	D0-D1,-(SP)
 			BSR	LSR_CheckBoxCollision
-			MOVEM.L	(SP)+,D0-D1
 			BEQ	.NoCollision
 
 			; Terminate laser on next move
@@ -203,7 +245,10 @@ APP_MoveObjects:	; Calculate bounding box around all lasers
 			MOVE.L	(Object.HitFunction,A3),A1
 			JSR	(A1)
 
-.NoCollision:		; Continue check with next object
+.NoCollision:		; Restore bounding box
+			MOVEM.W	(SP)+,D0-D3
+
+			; Continue check with next object
 			BSR	OBJ_CheckBoxCollisionNext
 			BNE	.CheckLoop
 
@@ -216,6 +261,9 @@ APP_MoveObjects:	; Calculate bounding box around all lasers
 			; Move player (TODO: Pass in joystick bitmap)
 			BSR	PLY_MoveAll
 
+			; Move particles
+			BSR 	PART_MoveAll
+
 			; Sort objects
                         MOVE.W  #$0FF0,(COLOR00,A6)
 			BSR	OBJ_SortAll
@@ -224,16 +272,45 @@ APP_MoveObjects:	; Calculate bounding box around all lasers
 			RTS
 
 
-SpriteMove:             ;MOVE.W	(Object.SpeedX,A3),D0
-			;SUB.W	#20,D0
-			;ASR.W	#7,D0
-			;SUB.W	D0,(Object.AccelX,A3)
-			RTS
 
-SpriteHit:		MOVE.W	(Laser.SpeedX,A0),D0
-			ASR.W	#3,D0
-			ADD.W	D0,(Object.SpeedX,A3)
-			RTS
+ParticleSpeedX:		DC.W	0
+
+
+			; A0 = Address of laser
+			; A3 = Address of object
+
+SpriteHit:		MOVE.W	(Laser.SpeedX,A0),D4
+			MOVE.W	(Laser.PosY,A0),D5
+
+			BSET.B	#7,(Object.Flags,A3)
+
+			BSR	PART_Create
+			BEQ	.NoParticle
+
+			MOVE.W	(Object.PosX,A3),(Particle.PosX,A1)
+			MOVE.W	D5,(Particle.PosY,A1)
+			ASR.W	#2,D4
+			;ADD.W	D4,(Object.SpeedX,A3)
+			NEG	D4			
+			BMI	.S1
+			MOVE.W	(Object.SizeX,A3),D5
+			ADD.W	D5,(Particle.PosX,A1)
+.S1:			MOVE.W	D4,(Particle.SpeedX,A1)
+
+			MOVE.W	(ParticleSpeedY,PC),D0
+			ADD.W	#17,D0
+			CMP.W	#40,D0
+			BLT	.Not40
+			SUB.W	#80,D0
+.Not40:			MOVE.W	D0,ParticleSpeedY
+			MOVE.W	D0,(Particle.SpeedY,A1)
+
+			MOVE.W	#1,(Particle.Weight,A1)
+			MOVE.W	#30,(Particle.Life,A1)
+.NoParticle:		RTS
+
+ParticleSpeedY:		DC.W	-40
+
 
 			SECTION DATA, DATA_C
 			XDEF	SpriteData

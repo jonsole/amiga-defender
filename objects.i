@@ -1,5 +1,6 @@
 			RSRESET
 Object.Next		RS.L	1
+Object.DrawNext:	RS.L	1	; Next object in PosY ascending order
 Object.HitFunction:	RS.L	1
 Object.MoveFunction:	RS.L	1
 Object.SizeX:		RS.W	1
@@ -17,6 +18,10 @@ Object.SpriteData:	RS.W	1
 Object.SpriteData2:	RS.W	1
 Object.BlitData:	RS.L	1
 Object.BlitMask:	RS.L	1
+Object.SpriteAltData:	RS.W	1
+Object.SpriteAltData2:	RS.W	1
+Object.BlitAltData:	RS.L	1
+Object.BlitAltMask:	RS.L	1
 Object.Flags		RS.B	1	; Generic flags	0 - Use alt sprite for 1 frame
 Object.Pad		RS.B	1
 Object.SizeOf:		RS.W	0

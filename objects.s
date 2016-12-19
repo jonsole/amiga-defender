@@ -4,6 +4,7 @@
 			
 			SECTION BSS,BSS
 OBJ_ActiveList:		DS.L	1
+OBJ_DrawList:		DS.L	1
 OBJ_FreeList:		DS.L	1
 OBJ_Table:		DS.B	Object.SizeOf*OBJ_MAX_NUM
 
@@ -25,6 +26,7 @@ OBJ_WorldX:		DC.W	0
 			XDEF	OBJ_Init
 OBJ_Init:		LEA	OBJ_Table,A0
 			CLR.L	OBJ_ActiveList
+			CLR.L	OBJ_DrawList
 			CLR.L	OBJ_FreeList
 
 			MOVE.W	#OBJ_MAX_NUM-1,D0
@@ -78,17 +80,45 @@ OBJ_MoveAll:		MOVE.L	OBJ_ActiveList, D0
 .MoveLoop:		; Copy pointer to A3
 			MOVE.L	D0,A3
 
-			; Apply acceleration
+			MOVE.L	(Object.MoveFunction,A3),A0
+			JSR	(A0)
+
+			; Get address of next object in list
+			MOVE.L	(Object.Next,A3),D0
+
+			; Loop back if address is not 0
+			BNE	.MoveLoop
+.Exit:			RTS
+
+
+			XDEF	OBJ_AddToDrawList
+OBJ_AddToDrawList:	LEA	OBJ_DrawList,A1
+			MOVE.W	(Object.PosY,A0),D0
+
+			MOVE.L	(A1),D1
+			;BEQ	.End
+
+			;MOVE.L	D1,A2
+			;CMP.W	D0,(ObjectPosY,A2)
+
+.End:			MOVE.L	D1,(Object.DrawNext,A0)
+			MOVE.L	A0,(A1)
+			RTS
+
+			XDEF	OBJ_DefaultMove
+OBJ_DefaultMove:        ; Apply acceleration
 			MOVE.W	(Object.AccelXCount,A3),D0
 			SUB.W	#1,D0
 			BMI	.NoAccelX
 			MOVE.W	D0,(Object.AccelXCount,A3)
+			MOVE.W	(Object.AccelX,A3),D0
 			ADD.W	D0,(Object.SpeedX,A3)
 .NoAccelX:
 			MOVE.W	(Object.AccelYCount,A3),D0
 			SUB.W	#1,D0
 			BMI	.NoAccelY
 			MOVE.W	D0,(Object.AccelYCount,A3)
+			MOVE.W	(Object.AccelY,A3),D0
 			ADD.W	D0,(Object.SpeedY,A3)
 .NoAccelY:
 			; Get object position, speed
@@ -107,23 +137,15 @@ OBJ_MoveAll:		MOVE.L	OBJ_ActiveList, D0
 			CMP.W	#1<<OBJ_POSY_SHIFT,D1
 			BCS	.BounceY
 			CMP.W	#190<<OBJ_POSY_SHIFT,D1
-			BCC	.BounceY
-
-.MoveDone:		; Store object's new position
-			MOVEM.W	D0-D1,(Object.PosX,A3)
-
-			; Get address of next object in list
-			MOVE.L	(Object.Next,A3),D0
-
-			; Loop back if address is not 0
-			BNE	.MoveLoop
-.Exit:			RTS
+			BCS	.MoveDone
 
 .BounceY:		NEG.W	D3
 			MOVE.W	D3,(Object.SpeedY,A3)
-			BRA	.MoveDone
+			MOVE.W	#190<<OBJ_POSY_SHIFT,D1
 
-
+.MoveDone:		; Store object's new position
+			MOVEM.W	D0-D1,(Object.PosX,A3)
+			RTS
 
 *****************************************************************************
 * Name
@@ -138,14 +160,14 @@ OBJ_MoveAll:		MOVE.L	OBJ_ActiveList, D0
 *****************************************************************************
 			XDEF	OBJ_SortAll
 OBJ_SortAll:		; Get list address into A0, A1
-			LEA	OBJ_ActiveList,A0
+			LEA	OBJ_DrawList,A0
 			MOVE.L	A0,A1
 
 			; Get first and second objects, exit if less than 2 objects
 			MOVE.L	(A1),D1
 			BEQ	.End
 			MOVE.L	D1,A2
-			MOVE.L	(Object.Next,A2),D1
+			MOVE.L	(Object.DrawNext,A2),D1
 			BEQ	.End
 			MOVE.L	D1,A3	
 
@@ -158,17 +180,17 @@ OBJ_SortAll:		; Get list address into A0, A1
 			BLE	.NoSwap
 
 			; Swap objects around
-			MOVE.L 	(Object.Next,A3),(Object.Next,A2) 
-			MOVE.L 	A2,(Object.Next,A3)
+			MOVE.L 	(Object.DrawNext,A3),(Object.DrawNext,A2) 
+			MOVE.L 	A2,(Object.DrawNext,A3)
 			MOVE.L	A3,(A1)
 
 			; Set moved flag
 			MOVEQ	#1,D0
 
 .NoSwap:		; Move along list
-			LEA	(Object.Next,A2),A1
+			LEA	(Object.DrawNext,A2),A1
 			MOVE.L	A3,A2
-			MOVE.L	(Object.Next,A3),D1
+			MOVE.L	(Object.DrawNext,A3),D1
 
 			; Loop back if more objects in list
 			MOVE.L	D1,A3
@@ -182,7 +204,7 @@ OBJ_SortAll:		; Get list address into A0, A1
 			; Get first and second objects
 			MOVE.L	A0,A1
 			MOVE.L	(A1),A2
-			MOVE.L	(Object.Next,A2),A3
+			MOVE.L	(Object.DrawNext,A2),A3
 
 			; Clear moved flag
 			MOVEQ	#0,D0
@@ -207,12 +229,12 @@ OBJ_SortAll:		; Get list address into A0, A1
 *****************************************************************************
 			XDEF	OBJ_CheckBoxCollisionInit
 OBJ_CheckBoxCollisionInit:
-			MOVE.L	OBJ_ActiveList,D4
+			MOVE.L	OBJ_DrawList,D4
 			RTS
 
 			XDEF	OBJ_CheckBoxCollisionNext
 OBJ_CheckBoxCollisionNext:		
-			MOVE.L	(Object.Next,A3),D4
+			MOVE.L	(Object.DrawNext,A3),D4
 			RTS
 
 			XDEF	OBJ_CheckBoxCollision
@@ -250,7 +272,8 @@ OBJ_CheckBoxCollision:	MOVE.L	D4,A3
 			BGT	.In
 
 .NotIn:			; Get address of next object in list
-			MOVE.L	(Object.Next,A3),D4
+			MOVE.L	(Object.DrawNext,A3),D4
+			MOVE.L	D4,A3
 
 			; Loop back if address is not 0
 			BNE	.MoveLoop
@@ -296,7 +319,7 @@ OBJ_DrawAll:		; Initialise blitter and sprite queue
 			BSR	GFX_InitSprites
 			;A5 = Position Table, D5 = Mask
 
-			MOVE.L	OBJ_ActiveList,D7
+			MOVE.L	OBJ_DrawList,D7
 			BEQ	.EndOfList
 
 .Loop:			MOVE.L	D7,A3
@@ -309,37 +332,34 @@ OBJ_DrawAll:		; Initialise blitter and sprite queue
 			CMP.W	#(GFX_DISPLAY_HIDE_LEFT+GFX_DISPLAY_WIDTH+GFX_DISPLAY_HIDE_RIGHT-16)<<OBJ_POSX_SHIFT,D1
 			BCC	.Next
 
-			; Check if we should use alternate sprite data for this frame
-			;BTST.B	#OBJ_FLAG_ALT_SPRITE,(Object.Flags,A3)
-			;BEQ	.NoAlt
-			;BCLR.B	#OBJ_FLAG_ALT_SPRITE,(Object.Flags,A3)
-			;LEA	(4,A3),A3
-
-.NoAlt:			; Mask out sub-pixel position bits
+			; Mask out sub-pixel position bits
 			AND.W	D5,D1 
 			AND.W	D5,D2 
 			AND.W	D5,D0
 			
+			; Check if we should use alternate sprite data for this frame
+			BCLR.B	#OBJ_FLAG_ALT_SPRITE,(Object.Flags,A3)
+			BEQ	.NoAlt
+
 			; Add object to sprite queue, carry set if unable to queue
-			MOVEM.W (Object.SpriteData,A3),D3-D4
+			MOVEM.W (Object.SpriteAltData,A3),D3-D4
 			BSR	GFX_QueueSprite
 			BCC	.Next
-			; D0-D4/A0-A1/A4 changed
+			MOVEM.L	(Object.BlitAltData,A3),D3-D4
+			BSR 	GFX_Blit16x
 
-			; Blit object
-			; D3 - BlitData
-			; D4 - BlitMask
-			; D1 - PosX << 4
-			; D2 - PosY << 4
-			; D0 - Height << 4
-			; D6 - Bitplane
+			BRA	.Next
+
+			; Add object to sprite queue, carry set if unable to queue
+.NoAlt:			MOVEM.W (Object.SpriteData,A3),D3-D4
+			BSR	GFX_QueueSprite
+			BCC	.Next
 			MOVEM.L	(Object.BlitData,A3),D3-D4
 			BSR 	GFX_Blit16x
-			; D0-D2/D7/A1 changed
 			
 			; Get address of next object
 			; Loop back if it is not 0
-.Next:			MOVE.L	(Object.Next,A3),D7
+.Next:			MOVE.L	(Object.DrawNext,A3),D7
 			BNE	.Loop
 
 .EndOfList:		BSR 	GFX_FinaliseSprites

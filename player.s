@@ -2,6 +2,7 @@
 			INCLUDE "player.i"
 			INCLUDE "laser.i"
 			INCLUDE "objects.i"
+                        INCLUDE "particle.i"
 
 			SECTION	DATA,DATA
 PLY_AccelXTable:	DC.B	-5,-8,-10,-15,-20,-10,0,10,20,15,10,8,5
@@ -17,7 +18,7 @@ PLY_Player1:		DC.L	0
 			DC.B	0		;Fire
 			DC.B	255		;Direction
 			DC.B	4		;LaserSize
-			DC.B	4		;LaserAutoFire
+			DC.B	3		;LaserAutoFire
 
 			SECTION	CODE,CODE
 

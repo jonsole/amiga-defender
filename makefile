@@ -6,7 +6,7 @@ LINK=$(TOOLDIR)\vlink
 
 OUTDIR ?= output
 
-ASM_FILES = sprite_test.s startup.s dos.s graphics.s objects.s player.s laser.s p6112_play.s
+ASM_FILES = sprite_test.s startup.s dos.s graphics.s objects.s player.s laser.s particle.s p6112_play.s
 OBJ_FILES ?= $(foreach ASM,$(ASM_FILES),$(OUTDIR)/$(basename $(notdir $(ASM))).o)
 
 win_path = $(subst /,\,$1)
